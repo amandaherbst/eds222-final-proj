@@ -1,0 +1,127 @@
+---
+title: "final project"
+format: html
+---
+```{r}
+library(tidyverse)
+library(here)
+library(janitor)
+library(naniar)
+library(lubridate)
+library(tsibble)
+library(feasts)
+library(zoo)
+```
+
+```{r}
+ctd <- read_delim(here("data", "LTER_monthly_downcasts_registered_stations_20220930.txt"))
+# read_delim because not a csv
+# convert any 99999 value to NA values 
+
+bottle <- read_delim(here("data", "LTER_monthly_bottledata_20220930.txt"), na = "BDL") %>% 
+  clean_names() %>% 
+  # convert any 99999 value to NA values 
+  replace_with_na_all(condition = ~.x == 99999) %>% 
+  # two rows at station Q2 which is not in the meta data and a positive longitude...
+  filter(station != "Q2")
+```
+
+```{r}
+ggplot(data = bottle) +
+  geom_point(aes(x = yyyy_mm_dd, y = mean_p_h))
+
+ggplot(data = bottle) +
+  geom_point(aes(x = yyyy_mm_dd, y = mean_ta_umol_kg_sw))
+
+ggplot(data = bottle) +
+  geom_point(aes(x = yyyy_mm_dd, y = chl_a_ug_l, color = station))
+
+ggplot(data = bottle) +
+  geom_point(aes(x = yyyy_mm_dd, y = poc_umol_l, color = station))
+```
+
+```{r}
+# N:P ratio
+
+bottle_nutrients <- bottle %>% 
+  select(no2_no3_umol_l, ammonia_umol_l)
+
+bottle_nutrients[is.na(bottle_nutrients)] <- 0
+
+bottle_nutrients <- bottle_nutrients %>% 
+  mutate(din_umol_l = no2_no3_umol_l + ammonia_umol_l)
+
+bottle_nutrients$din_umol_l[bottle_nutrients$din_umol_l == 0] <- NA
+
+bottle_complete <- bottle %>% 
+  cbind(din_umol_l = bottle_nutrients$din_umol_l) %>% 
+  mutate(n_p_ratio = din_umol_l/po4_umol_l)
+           
+# rowSums(bottle[c("no2_no3_umol_l", "ammonia_umol_l")], na.rm = TRUE)
+```
+
+```{r}
+ggplot(data = bottle_complete, aes(x = n_p_ratio, y = chl_a_ug_l)) +
+  geom_point() +
+  facet_wrap(~station)
+
+ggplot(data = bottle_complete, aes(x = po4_umol_l, y = chl_a_ug_l, color = station)) +
+  geom_point()
+
+ggplot(data = bottle_complete, aes(x = din_umol_l, y = chl_a_ug_l, color = station)) +
+  geom_point()
+```
+
+```{r}
+# look at chl and nutrient time series
+bottle_chl_ts <- bottle_complete %>% 
+  mutate(yr_mo = yearmonth(yyyy_mm_dd)) %>% 
+  group_by(yr_mo) %>% 
+  summarize(mean_chl_a = mean(chl_a_ug_l, na.rm = TRUE)) %>% 
+  as_tsibble(index = yr_mo) %>% 
+  fill_gaps() %>% 
+   mutate(mean_chl_a=if_else(is.nan(mean_chl_a), NA, mean_chl_a) %>% 
+           na.approx())
+  
+# plot decomposition componenets
+bottle_chl_ts %>% 
+  model(STL(mean_chl_a)) %>% 
+  components() %>% 
+  autoplot()
+```
+More to do:
+- separate by site?
+- plot all the sites
+
+```{r}
+ggplot(data = bottle, aes(x = longitude_e, y = latitude_n)) +
+  geom_point()
+
+bottle %>% 
+  filter(station == "Q2")
+```
+
+
+```{r}
+# trying to convert to tsibble and then decompose and plot but the model doesn't work with NaN values...
+bottle_chem <- bottle %>% 
+  select(station, yyyy_mm_dd, mean_p_h) 
+
+bottle_chem_ts <- bottle_chem %>% 
+  group_by(yyyy_mm_dd) %>% 
+  summarize(day_avg_ph = mean(mean_p_h, na.rm = TRUE)) %>% 
+  as_tsibble(index = yyyy_mm_dd)
+
+#%>% 
+  fill_gaps() %>% 
+  mutate(day_avg_ph=if_else(is.nan(day_avg_ph), NA, day_avg_ph) %>% 
+           na.approx())
+```
+
+```{r}
+bottle_chem_ts %>% 
+  model(STL(day_avg_ph)) %>% 
+  components() %>% 
+  autoplot()
+```
+
