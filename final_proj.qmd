@@ -11,13 +11,17 @@ library(lubridate)
 library(tsibble)
 library(feasts)
 library(zoo)
+library(modelr)
 ```
+
+## Nitrogen and Phosphorous are considered the main drivers of phytoplankton growth. *Characterize the relationship* Is there a statistically significant relationship between nitrogen, phosphourous, and chlorophyll-a?
 
 ```{r}
 ctd <- read_delim(here("data", "LTER_monthly_downcasts_registered_stations_20220930.txt"))
 # read_delim because not a csv
 # convert any 99999 value to NA values 
 
+# BDL = below detection limit, so convert those to NA
 bottle <- read_delim(here("data", "LTER_monthly_bottledata_20220930.txt"), na = "BDL") %>% 
   clean_names() %>% 
   # convert any 99999 value to NA values 
@@ -27,17 +31,22 @@ bottle <- read_delim(here("data", "LTER_monthly_bottledata_20220930.txt"), na = 
 ```
 
 ```{r}
-ggplot(data = bottle) +
-  geom_point(aes(x = yyyy_mm_dd, y = mean_p_h))
+# not enough ph and TA data :/
+# ggplot(data = bottle) +
+#   geom_point(aes(x = yyyy_mm_dd, y = mean_p_h))
+# 
+# ggplot(data = bottle) +
+#   geom_point(aes(x = yyyy_mm_dd, y = mean_ta_umol_kg_sw))
 
 ggplot(data = bottle) +
-  geom_point(aes(x = yyyy_mm_dd, y = mean_ta_umol_kg_sw))
+  geom_point(aes(x = yyyy_mm_dd, y = chl_a_ug_l, color = target_depth_m)) +
+  scale_color_viridis_c()
+# not enough tdp and tdn to use
+# ggplot(data = bottle) +
+#   geom_point(aes(x = yyyy_mm_dd, y = tdn_umol_l))
 
-ggplot(data = bottle) +
-  geom_point(aes(x = yyyy_mm_dd, y = chl_a_ug_l, color = station))
-
-ggplot(data = bottle) +
-  geom_point(aes(x = yyyy_mm_dd, y = poc_umol_l, color = station))
+# ggplot(data = bottle) +
+#   geom_point(aes(x = yyyy_mm_dd, y = poc_umol_l, color = station))
 ```
 
 ```{r}
@@ -70,7 +79,11 @@ ggplot(data = bottle_complete, aes(x = po4_umol_l, y = chl_a_ug_l, color = stati
 
 ggplot(data = bottle_complete, aes(x = din_umol_l, y = chl_a_ug_l, color = station)) +
   geom_point()
-```
+
+ggplot(data = bottle_complete, aes(x = din_umol_l, y = po4_umol_l)) +
+  geom_point()
+
+cr```
 
 ```{r}
 # look at chl and nutrient time series
@@ -89,6 +102,56 @@ bottle_chl_ts %>%
   components() %>% 
   autoplot()
 ```
+
+```{r}
+# look at nutrient time series
+bottle_nutrient_ts <- bottle_complete %>% 
+  mutate(yr_mo = yearmonth(yyyy_mm_dd)) %>% 
+  group_by(yr_mo) %>% 
+  summarize(mean_din = mean(din_umol_l, na.rm = TRUE),
+            mean_po4 = mean(po4_umol_l, na.rm = TRUE)) %>% 
+  as_tsibble(index = yr_mo) %>%
+  filter(yr_mo != yearmonth("2022 Sep")) %>% 
+  fill_gaps() %>% 
+   mutate(mean_din=if_else(is.nan(mean_din), NA, mean_din) %>% na.approx(),
+          mean_po4 = if_else(is.nan(mean_po4), NA, mean_po4) %>% na.approx())
+  
+# plot decomposition componenets
+bottle_nutrient_ts %>% 
+  model(STL(mean_din)) %>% 
+  components() %>% 
+  autoplot()
+
+bottle_nutrient_ts %>% 
+  model(STL(mean_po4)) %>% 
+  components() %>% 
+  autoplot()
+```
+
+
+Linear regression with chlorophyll and nutrients
+```{r}
+summary(lm(chl_a_ug_l~din_umol_l + po4_umol_l, data = bottle_complete))
+
+model <- lm(chl_a_ug_l~din_umol_l + po4_umol_l, data = bottle_complete)
+
+bottle_complete %>% 
+  ggplot(aes(x = n_p_ratio, y = chl_a_ug_l)) +
+  geom_point() +
+  geom_line(data = augment(model), aes(y = .fitted))
+```
+
+```{r}
+mod <- lm(chl_a_ug_l~n_p_ratio + target_depth_m, data = bottle_complete)
+
+bottle_complete %>% 
+  ggplot(aes(x = n_p_ratio, y = chl_a_ug_l, color = as.factor(target_depth_m))) +
+  geom_point() +
+  geom_line(data = augment(mod), aes(y = .fitted, color = as.factor(target_depth_m))) +
+  scale_color_discrete("Depth")
+```
+
+
 More to do:
 - separate by site?
 - plot all the sites
@@ -103,25 +166,25 @@ bottle %>%
 
 
 ```{r}
-# trying to convert to tsibble and then decompose and plot but the model doesn't work with NaN values...
-bottle_chem <- bottle %>% 
-  select(station, yyyy_mm_dd, mean_p_h) 
-
-bottle_chem_ts <- bottle_chem %>% 
-  group_by(yyyy_mm_dd) %>% 
-  summarize(day_avg_ph = mean(mean_p_h, na.rm = TRUE)) %>% 
-  as_tsibble(index = yyyy_mm_dd)
-
-#%>% 
-  fill_gaps() %>% 
-  mutate(day_avg_ph=if_else(is.nan(day_avg_ph), NA, day_avg_ph) %>% 
-           na.approx())
+# # trying to convert to tsibble and then decompose and plot but the model doesn't work with NaN values...
+# bottle_chem <- bottle %>% 
+#   select(station, yyyy_mm_dd, mean_p_h) 
+# 
+# bottle_chem_ts <- bottle_chem %>% 
+#   group_by(yyyy_mm_dd) %>% 
+#   summarize(day_avg_ph = mean(mean_p_h, na.rm = TRUE)) %>% 
+#   as_tsibble(index = yyyy_mm_dd)
+# 
+# #%>% 
+#   fill_gaps() %>% 
+#   mutate(day_avg_ph=if_else(is.nan(day_avg_ph), NA, day_avg_ph) %>% 
+#            na.approx())
 ```
 
 ```{r}
-bottle_chem_ts %>% 
-  model(STL(day_avg_ph)) %>% 
-  components() %>% 
-  autoplot()
+# bottle_chem_ts %>% 
+#   model(STL(day_avg_ph)) %>% 
+#   components() %>% 
+#   autoplot()
 ```
 
