@@ -130,5 +130,12 @@ ggintfun(obj = mod, varnames = c("po4_umol_l", "din_umol_l"),
 
 ## Collinearity
 
+```{r}
+ggplot(data = bottle_complete, aes(x = din_umol_l, y = po4_umol_l)) +
+  geom_point()
+```
 
 
+## further work
+- add seasonality
+- site and depth
