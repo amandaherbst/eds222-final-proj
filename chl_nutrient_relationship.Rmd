@@ -24,6 +24,7 @@ library(modelr)
 ```
 
 ## Load data
+
 SBC LTER Ocean: Ocean Currents and Biogeochemistry: Nearshore water profiles (monthly CTD and chemistry), ongoing since 2000
 
 ```{r}
@@ -38,12 +39,15 @@ bottle <- read_delim(here("data", "LTER_monthly_bottledata_20220930.txt"),
 ```
 
 ## Can we see a long-term trend in chl-a?
+
 ```{r}
 ggplot(data = bottle) +
   geom_point(aes(x = yyyy_mm_dd, y = chl_a_ug_l, color = target_depth_m)) +
   scale_color_viridis_c()
 ```
+
 ## What about with decomposition?
+
 ```{r}
 # Average Chl-a measurements by month
 bottle_chl_ts <- bottle %>% 
@@ -63,11 +67,13 @@ bottle_chl_ts %>%
   components() %>% 
   autoplot()
 ```
-Looks like there is a downward trend over time! Big bar, so small impact but 
+
+Looks like there is a downward trend over time! Big bar, so small impact but
 
 *But, seasonal component is definitely more important in driving overall variability.*
 
 ## More data wrangling to look at relationship
+
 ```{r}
 bottle_nutrients <- bottle %>% 
   select(no2_no3_umol_l, ammonia_umol_l)
@@ -86,13 +92,43 @@ bottle_complete <- bottle %>%
 ```
 
 ## OLS
+
 ```{r}
 # multiple linear regression
 summary(lm(chl_a_ug_l ~ po4_umol_l + din_umol_l, data = bottle_complete))
 ```
+
 ## Interaction term?
-"Some of the effects of nitrogen are related to the effect on increasing the growth of plant tops and concurrently increasing the absorption of phosphorus. The ammonium form of nitrogen frequently increases phosphorus absorption more than the nitrate form." https://www.sciencedirect.com/science/article/pii/S0065211308601273#:~:text=Some%20of%20the%20effects%20of,more%20than%20the%20nitrate%20form. 
+
+"Some of the effects of nitrogen are related to the effect on increasing the growth of plant tops and concurrently increasing the absorption of phosphorus. The ammonium form of nitrogen frequently increases phosphorus absorption more than the nitrate form." <https://www.sciencedirect.com/science/article/pii/S0065211308601273#>:\~:text=Some%20of%20the%20effects%20of,more%20than%20the%20nitrate%20form.
+
 ```{r}
-summary(lm(chl_a_ug_l ~ po4_umol_l + din_umol_l + po4_umol_l:din_umol_l, data = bottle_complete))
+# multiple linear regression with interaction term
+summary(lm(chl_a_ug_l ~ po4_umol_l + din_umol_l + din_umol_l:po4_umol_l, data = bottle_complete))
 ```
+### Interpretation
+
+- intercept: the predicted concentration of chlorophyll-*a* when the concentration of both phosphate and dissolved inorganic nitrogen is 0 is 2.87 ug/L.
+- po4_umol_l: The average change in chlorophyll-*a* concentration with an average one unit increase in phosphate concentration, when the dissolved inorganic nitrogen concentration is 0, is -0.84 ug/L.
+- din_umol_l: The average change in chlorophyll-*a* concentration with an average one unit increase in dissolved inorganic nitrogen concentration, when the phosphate concentration is 0, is 0.16 ug/L.
+- po4_umol_l:din_umol_l: the marginal effect of of phosphate and dissolved inorganic nitrogen on on each other's relationship with chlorophyll-*a*
+  - A higher phosphate concentration increases the slope of the relationship between chlorohpyll-*a* and dissolved inorganic nitrogen, and vice versa.
+  
+#### Marginal effects
+```{r}
+devtools::source_url("https://raw.githubusercontent.com/jkarreth/JKmisc/master/ggintfun.R")
+```
+
+```{r}
+mod <- lm(chl_a_ug_l ~ po4_umol_l + din_umol_l + din_umol_l:po4_umol_l, data = bottle_complete)
+ggintfun(obj = mod, varnames = c("po4_umol_l", "din_umol_l"), 
+         varlabs = c("Phosphate", "Dissolved Inorganic Nitrogen"),
+         title = FALSE, rug = TRUE,
+         twoways = TRUE)
+```
+
+
+## Collinearity
+
+
 

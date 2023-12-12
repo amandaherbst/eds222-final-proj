@@ -103,6 +103,7 @@ bottle_chl_ts %>%
   autoplot()
 ```
 
+
 ```{r}
 # look at nutrient time series
 bottle_nutrient_ts <- bottle_complete %>% 
