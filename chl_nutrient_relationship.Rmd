@@ -1,0 +1,98 @@
+---
+title: "chl_nutrients"
+output: html_document
+date: "2023-12-12"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Nitrogen and Phosphorous are considered the main drivers of phytoplankton growth. *Characterize the relationship* Is there a statistically significant relationship between nitrogen, phosphourous, and chlorophyll-a over the 20 year period?
+
+```{r}
+# import libraries 
+library(tidyverse)
+library(here)
+library(janitor)
+library(naniar)
+library(lubridate)
+library(tsibble)
+library(feasts)
+library(zoo)
+library(modelr)
+```
+
+## Load data
+SBC LTER Ocean: Ocean Currents and Biogeochemistry: Nearshore water profiles (monthly CTD and chemistry), ongoing since 2000
+
+```{r}
+bottle <- read_delim(here("data", "LTER_monthly_bottledata_20220930.txt"), 
+                     # BDL = below detection limit, so convert those to NA
+                     na = "BDL") %>% 
+  clean_names() %>% 
+  # convert any 99999 value to NA values 
+  replace_with_na_all(condition = ~.x == 99999) %>% 
+  # two rows at station Q2 which is not in the meta data and a positive longitude...
+  filter(station != "Q2")
+```
+
+## Can we see a long-term trend in chl-a?
+```{r}
+ggplot(data = bottle) +
+  geom_point(aes(x = yyyy_mm_dd, y = chl_a_ug_l, color = target_depth_m)) +
+  scale_color_viridis_c()
+```
+## What about with decomposition?
+```{r}
+# Average Chl-a measurements by month
+bottle_chl_ts <- bottle %>% 
+  mutate(yr_mo = yearmonth(yyyy_mm_dd)) %>% 
+  group_by(yr_mo) %>% 
+  summarize(mean_chl_a = mean(chl_a_ug_l, na.rm = TRUE)) %>% 
+  # convert to tsibble for decomposition
+  as_tsibble(index = yr_mo) %>% 
+  # interpolate NA values so decomp works
+  fill_gaps() %>% 
+   mutate(mean_chl_a=if_else(is.nan(mean_chl_a), NA, mean_chl_a) %>% 
+           na.approx())
+  
+# plot decomposition componenets
+bottle_chl_ts %>% 
+  model(STL(mean_chl_a)) %>% 
+  components() %>% 
+  autoplot()
+```
+Looks like there is a downward trend over time! Big bar, so small impact but 
+
+*But, seasonal component is definitely more important in driving overall variability.*
+
+## More data wrangling to look at relationship
+```{r}
+bottle_nutrients <- bottle %>% 
+  select(no2_no3_umol_l, ammonia_umol_l)
+
+bottle_nutrients[is.na(bottle_nutrients)] <- 0
+
+bottle_nutrients <- bottle_nutrients %>% 
+  mutate(din_umol_l = no2_no3_umol_l + ammonia_umol_l)
+
+bottle_nutrients$din_umol_l[bottle_nutrients$din_umol_l == 0] <- NA
+
+bottle_complete <- bottle %>% 
+  cbind(din_umol_l = bottle_nutrients$din_umol_l) %>% 
+  mutate(n_p_ratio = din_umol_l/po4_umol_l) %>% 
+  select(chl_a_ug_l, po4_umol_l, din_umol_l, n_p_ratio)
+```
+
+## OLS
+```{r}
+# multiple linear regression
+summary(lm(chl_a_ug_l ~ po4_umol_l + din_umol_l, data = bottle_complete))
+```
+## Interaction term?
+"Some of the effects of nitrogen are related to the effect on increasing the growth of plant tops and concurrently increasing the absorption of phosphorus. The ammonium form of nitrogen frequently increases phosphorus absorption more than the nitrate form." https://www.sciencedirect.com/science/article/pii/S0065211308601273#:~:text=Some%20of%20the%20effects%20of,more%20than%20the%20nitrate%20form. 
+```{r}
+summary(lm(chl_a_ug_l ~ po4_umol_l + din_umol_l + po4_umol_l:din_umol_l, data = bottle_complete))
+```
+
