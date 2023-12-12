@@ -65,7 +65,11 @@ bottle_chl_ts <- bottle %>%
 bottle_chl_ts %>% 
   model(STL(mean_chl_a)) %>% 
   components() %>% 
-  autoplot()
+  autoplot() +
+  labs(x = "Date",
+       y = "Average Chlorophyll-a Concentration (\u03BCg/L)",
+       title = "Chlorophyll-a Decomposition") +
+  theme_bw()
 ```
 
 Looks like there is a downward trend over time! Big bar, so small impact but
@@ -121,10 +125,11 @@ devtools::source_url("https://raw.githubusercontent.com/jkarreth/JKmisc/master/g
 
 ```{r}
 mod <- lm(chl_a_ug_l ~ po4_umol_l + din_umol_l + din_umol_l:po4_umol_l, data = bottle_complete)
-ggintfun(obj = mod, varnames = c("po4_umol_l", "din_umol_l"), 
+marginal_effects <- ggintfun(obj = mod, varnames = c("po4_umol_l", "din_umol_l"), 
          varlabs = c("Phosphate", "Dissolved Inorganic Nitrogen"),
          title = FALSE, rug = TRUE,
          twoways = TRUE)
+ggsave("marginal_effects.png", plot = marginal_effects, width = 10, height = 6)
 ```
 
 
@@ -132,10 +137,35 @@ ggintfun(obj = mod, varnames = c("po4_umol_l", "din_umol_l"),
 
 ```{r}
 ggplot(data = bottle_complete, aes(x = din_umol_l, y = po4_umol_l)) +
-  geom_point()
+  geom_point(alpha = 0.5) +
+  labs(x = "Dissolved Inorganic Nitrogen (\u03BCmol/L)",
+       y = "Phosphate (\u03BCmol/L)") +
+  geom_smooth(method = lm, se = FALSE,
+              color = "darkseagreen") +
+  scale_x_continuous(expand = c(0, 0), limits = c(0, 25)) +
+  scale_y_continuous(expand = c(0,0), limits = c(0, 3)) +
+  theme_bw()
 ```
 
 
 ## further work
 - add seasonality
 - site and depth
+
+## replacing outliers?
+
+```{r}
+ninety_nine_pctile <- quantile(bottle_complete$chl_a_ug_l, .99, na.rm = TRUE)
+bottle_test <- bottle_complete %>% 
+  mutate(chl_a_ug_l = ifelse(chl_a_ug_l > ninety_nine_pctile, ninety_nine_pctile, chl_a_ug_l))
+
+ggplot(data = bottle_test) +
+  geom_point(aes(x = din_umol_l, y = chl_a_ug_l))
+
+ggplot(data = bottle_test) +
+  geom_point(aes(x = po4_umol_l, y = chl_a_ug_l))
+```
+```{r}
+summary(lm(chl_a_ug_l ~ po4_umol_l + din_umol_l + din_umol_l:po4_umol_l, data = bottle_test))
+```
+
