@@ -1,0 +1,8 @@
+---
+title: "Blog Post"
+format: html
+---
+
+# Relationship between cholorphyll-*a* and nutrients in the Santa Barbara Channel
+
+Chlorophyll-*a* is an incredibly important pigment found in most plants worldwide, giving them their green color, and is a key player in photosynthesis. Not only is chl-a found in plants on land, it is also present in all phytoplankton species living in oceans, lakes, streams, and more. Therefore, chlorophyll-a measurements collected from water samples are used as a proxy for phytoplankton biomass. Phytoplankton are 

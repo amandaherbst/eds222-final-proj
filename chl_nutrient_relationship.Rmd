@@ -152,7 +152,72 @@ ggplot(data = bottle_complete, aes(x = din_umol_l, y = po4_umol_l)) +
 - add seasonality
 - site and depth
 
-## replacing outliers?
+# Outliers
+looking at the chl-a distribution, there are some definitte outliers that are skewing the distribution
+```{r}
+hist(bottle_complete$chl_a_ug_l, breaks = 20)
+```
+What about the distribution of the nutrients?
+
+```{r}
+hist(bottle_complete$din_umol_l)
+hist(bottle_complete$po4_umol_l)
+```
+Since they all have a positive skew, let's try taking the log of them.
+
+```{r}
+bottle_logs <- bottle_complete %>% 
+  mutate(log_chla = log(chl_a_ug_l),
+         log_din = log(din_umol_l),
+         log_po4 = log(po4_umol_l))
+```
+Let's look at the distribution of the logs
+```{r}
+hist(bottle_logs$log_chla)
+hist(bottle_logs$log_din)
+hist(bottle_logs$log_po4)
+ggplot(data = bottle_logs, aes(x = log_din, y = log_po4)) +
+  geom_point(alpha = 0.5)
+```
+## q-q plots
+```{r}
+# chl
+ggplot(bottle_logs, aes(sample = log_chla)) +
+  geom_qq(color = 'darkgreen') +
+  geom_qq_line() +
+  labs(title = "chl Q-Q Plot") +
+  theme_bw()
+
+# po4
+ggplot(bottle_logs, aes(sample = log_po4)) +
+  geom_qq(color = 'darkblue') +
+  geom_qq_line() +
+  labs(title = "po4 Q-Q Plot") +
+  theme_bw()
+
+# din
+ggplot(bottle_logs, aes(sample = log_din)) +
+  geom_qq(color = 'purple') +
+  geom_qq_line() +
+  labs(title = "din Q-Q Plot") +
+  theme_bw()
+```
+
+
+## mulitple linear regression w/ interaction term with logs
+```{r}
+# multiple linear regression with interaction term
+summary(lm(log_chla ~ log_po4 + log_din + log_din:log_po4, data = bottle_logs))
+```
+### marginal effects
+```{r}
+model_log <- lm(log_chla ~ log_po4 + log_din + log_din:log_po4, data = bottle_logs)
+ggintfun(obj = model_log, varnames = c("log_po4", "log_din"), 
+         varlabs = c("Log Phosphate", "Log Dissolved Inorganic Nitrogen"),
+         title = FALSE, rug = TRUE,
+         twoways = TRUE)
+```
+
 
 ```{r}
 ninety_nine_pctile <- quantile(bottle_complete$chl_a_ug_l, .99, na.rm = TRUE)
@@ -167,5 +232,8 @@ ggplot(data = bottle_test) +
 ```
 ```{r}
 summary(lm(chl_a_ug_l ~ po4_umol_l + din_umol_l + din_umol_l:po4_umol_l, data = bottle_test))
+```
+```{r}
+plot(lm(chl_a_ug_l ~ po4_umol_l + din_umol_l + din_umol_l:po4_umol_l, data = bottle_complete))
 ```
 
